@@ -22,54 +22,46 @@ class SafariBaseIE(InfoExtractor):
 
     LOGGED_IN = False
 
+    def is_logged_in(self, fatal=True):
+        auth, urlh = self._download_json_handle(
+            'https://api.oreilly.com/api/v2/me/', None, note='Checking if logged in', fatal=False,
+            headers={'Accept': 'application/json'}, expected_status=401)
+        if urlh.status == 401:
+            msg = 'Unable to login: %s' % auth['detail']
+            if fatal:
+                raise ExtractorError(msg)
+            self.write_debug(msg)
+            self.LOGGED_IN = False
+            return self.LOGGED_IN
+        self.LOGGED_IN = True
+        return self.LOGGED_IN
+    def _initialize_pre_login(self):
+        self.is_logged_in(fatal=False)
+
     def _perform_login(self, username, password):
-        _, urlh = self._download_webpage_handle(
-            'https://learning.oreilly.com/accounts/login-check/', None,
-            'Downloading login page')
-
-        def is_logged(urlh):
-            return 'learning.oreilly.com/home/' in urlh.geturl()
-
-        if is_logged(urlh):
-            self.LOGGED_IN = True
+        if self.LOGGED_IN:
             return
-
-        redirect_url = urlh.geturl()
-        parsed_url = compat_urlparse.urlparse(redirect_url)
-        qs = compat_parse_qs(parsed_url.query)
-        next_uri = compat_urlparse.urljoin(
-            'https://api.oreilly.com', qs['next'][0])
-
         auth, urlh = self._download_json_handle(
             'https://www.oreilly.com/member/auth/login/', None, 'Logging in',
             data=json.dumps({
                 'email': username,
-                'password': password,
-                'redirect_uri': next_uri,
+                'password': password
             }).encode(), headers={
-                'Content-Type': 'application/json',
-                'Referer': redirect_url,
+                'Content-Type': 'application/json'
             }, expected_status=400)
 
         credentials = auth.get('credentials')
         if (not auth.get('logged_in') and not auth.get('redirect_uri')
                 and credentials):
-            raise ExtractorError(
-                'Unable to login: %s' % credentials, expected=True)
+            raise ExtractorError('Unable to login: %s' % credentials, expected=True)
 
         # oreilly serves two same instances of the following cookies
         # in Set-Cookie header and expects first one to be actually set
         for cookie in ('groot_sessionid', 'orm-jwt', 'orm-rt'):
             self._apply_first_set_cookie_header(urlh, cookie)
 
-        _, urlh = self._download_webpage_handle(
-            auth.get('redirect_uri') or next_uri, None, 'Completing login',)
+        self.is_logged_in()
 
-        if is_logged(urlh):
-            self.LOGGED_IN = True
-            return
-
-        raise ExtractorError('Unable to log in')
 
 
 class SafariIE(SafariBaseIE):
