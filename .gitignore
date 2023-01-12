@@ -3,6 +3,7 @@
 cookies
 *cookies.txt
 .netrc
+batch-file.txt
 
 # Downloaded
 *.annotations.xml
